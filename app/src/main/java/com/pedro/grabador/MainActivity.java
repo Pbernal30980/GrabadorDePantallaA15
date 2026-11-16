@@ -226,8 +226,7 @@ public class MainActivity extends Activity {
         help.setText("• Los videos quedan en la Galería, carpeta Movies/Grabador.\n"
                 + "• Pausar y detener: desde la notificación o desde aquí.\n"
                 + "• Atajo: en el panel rápido toca el lápiz (Editar) y agrega \"Grabar pantalla\".\n"
-                + "• Cuando Android pregunte, elige \"Pantalla completa\".\n"
-                + "• Algunas apps (llamadas, WhatsApp, Netflix…) no dejan grabar su sonido o imagen; eso lo decide cada app.");
+                                + "• Algunas apps (llamadas, WhatsApp, Netflix…) no dejan grabar su sonido o imagen; eso lo decide cada app.");
         help.setTextColor(Color.parseColor("#616161"));
         help.setLineSpacing(dp(4), 1f);
         help.setPadding(0, dp(24), 0, 0);
@@ -365,7 +364,14 @@ public class MainActivity extends Activity {
     private void askCapture() {
         MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
         try {
-            startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+            Intent capture;
+            if (Build.VERSION.SDK_INT >= 34) {
+                // Pide directamente "pantalla completa" (sin tener que elegir en el menú)
+                capture = mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay());
+            } else {
+                capture = mpm.createScreenCaptureIntent();
+            }
+            startActivityForResult(capture, REQ_CAPTURE);
         } catch (Exception e) {
             Toast.makeText(this, "No se pudo abrir la captura: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }

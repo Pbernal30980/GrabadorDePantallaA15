@@ -25,12 +25,15 @@ adb shell pidof $PKG > $OUT/pid_inicio.txt || echo "PROCESO MUERTO AL INICIAR" >
 python3 .github/scripts/tap.py "Iniciar grabaci"
 sleep 3
 shot 2_dialogo
-python3 .github/scripts/tap.py "^(Single app|Una sola app|A single app)$" >/dev/null 2>&1 || true
-python3 .github/scripts/tap.py "entire screen|pantalla completa" || true
-sleep 1
-python3 .github/scripts/tap.py "^(Start|Start recording|Iniciar|Comenzar|Share screen|Next)$"
-sleep 8
+python3 .github/scripts/tap.py "^(Start|Start now|Start recording|Share screen|Iniciar|Comenzar|Empezar)$"
+sleep 4
+adb shell input keyevent KEYCODE_HOME
+sleep 6
 shot 3_grabando
+adb shell cmd statusbar expand-notifications
+sleep 2
+shot 3b_notificacion
+adb shell cmd statusbar collapse
 adb shell dumpsys notification --noredact > $OUT/notificaciones.txt
 
 # 3) Pausar / reanudar / detener desde la app
