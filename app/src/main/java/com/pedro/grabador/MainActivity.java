@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
         handleIntent(getIntent());
     }
 
-    private boolean uiReady = false;
+    private String lastKey = null;
 
     /** Si la app se cerró la vez pasada, muestra el error para poder enviarlo. */
     private boolean showLastCrash() {
@@ -289,6 +289,18 @@ public class MainActivity extends Activity {
         if (mainButton == null || liveStatus == null) return;
         boolean rec = RecorderService.isRecording;
         boolean paused = RecorderService.isPaused;
+        // Solo redibujar cuando algo cambió (ahorra batería)
+        String key = rec + "|" + paused + "|" + (rec ? RecorderService.elapsedMs() / 1000 : 0) + "|"
+                + RecorderService.lastMessage + "|" + RecorderService.liveActive + "|" + LiveUpdate.canPost(this);
+        if (key.equals(lastKey)) return;
+        boolean modeChanged = lastKey == null || !lastKey.startsWith(rec + "|" + paused + "|");
+        lastKey = key;
+        if (!modeChanged && rec) {
+            String t = RecorderService.fmt(RecorderService.elapsedMs());
+            status.setText(paused ? "⏸ En pausa  " + t : "🔴 Grabando  " + t);
+            refreshLive(rec);
+            return;
+        }
         paint(mainButton, rec ? "#424242" : "#D32F2F", dp(32));
         mainButton.setText(rec ? "■  Detener y guardar" : "●  Iniciar grabación");
         pauseButton.setVisibility(rec ? android.view.View.VISIBLE : android.view.View.GONE);
@@ -325,14 +337,14 @@ public class MainActivity extends Activity {
         } else {
             t.append("Cuando grabes, el tiempo y los botones Pausar/Detener aparecen en la Now Bar (pantalla de bloqueo) y en la barra de estado.");
         }
-        liveStatus.setText(t);
-        liveButton.setVisibility(android.view.View.VISIBLE);
+        if (!t.toString().contentEquals(liveStatus.getText())) liveStatus.setText(t);
+        if (liveButton.getVisibility() != android.view.View.VISIBLE) liveButton.setVisibility(android.view.View.VISIBLE);
     }
 
     private void sendToService(String action) {
         Intent i = new Intent(this, RecorderService.class).setAction(action);
         startService(i);
-        handler.postDelayed(this::refresh, 150);
+        handler.postDelayed(() -> { lastKey = null; refresh(); }, 150);
     }
 
     private int selectedAudio() { return prefs.getInt("audio", 1); }
@@ -359,6 +371,7 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         if (requestCode == REQ_PERMS) askCapture();
+        lastKey = null;
     }
 
     private void askCapture() {

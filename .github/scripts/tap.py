@@ -1,8 +1,8 @@
 # Uso: python3 tap.py "regex"  → toca el primer elemento cuyo texto o descripción coincida
 import re, subprocess, sys, time
 pat = re.compile(sys.argv[1], re.I)
-for intento in range(6):
-    subprocess.run(["adb", "shell", "uiautomator", "dump", "/sdcard/ui.xml"], capture_output=True)
+for intento in range(10):
+    subprocess.run(["adb", "shell", "rm", "-f", "/sdcard/ui.xml"]); subprocess.run(["adb", "shell", "uiautomator", "dump", "/sdcard/ui.xml"], capture_output=True)
     xml = subprocess.run(["adb", "exec-out", "cat", "/sdcard/ui.xml"], capture_output=True, text=True).stdout
     for m in re.finditer(r'<node [^>]*>', xml):
         n = m.group(0)
