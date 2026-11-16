@@ -50,8 +50,61 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        buildUi();
+        if (showLastCrash()) return;
+        try {
+            buildUi();
+        } catch (Throwable e) {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            e.printStackTrace(new java.io.PrintWriter(sw));
+            showError(sw.toString());
+            return;
+        }
         handleIntent(getIntent());
+    }
+
+    private boolean uiReady = false;
+
+    /** Si la app se cerró la vez pasada, muestra el error para poder enviarlo. */
+    private boolean showLastCrash() {
+        java.io.File f = App.crashFile(this);
+        if (!f.exists()) return false;
+        String txt;
+        try { txt = new String(java.nio.file.Files.readAllBytes(f.toPath())); } catch (Exception e) { txt = e.toString(); }
+        f.delete();
+        showError(txt);
+        return true;
+    }
+
+    private void showError(String txt) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(56), dp(20), dp(40));
+        TextView h = new TextView(this);
+        h.setText("La app se cerró la última vez 😕\nCopia este texto y envíaselo a Claude:");
+        h.setTextSize(17);
+        h.setTypeface(Typeface.DEFAULT_BOLD);
+        box.addView(h);
+        Button copy = new Button(this);
+        copy.setText("Copiar error");
+        copy.setOnClickListener(v -> {
+            android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("error", txt));
+            Toast.makeText(this, "Copiado", Toast.LENGTH_SHORT).show();
+        });
+        box.addView(copy);
+        Button retry = new Button(this);
+        retry.setText("Volver a abrir la app");
+        retry.setOnClickListener(v -> recreate());
+        box.addView(retry);
+        TextView t = new TextView(this);
+        t.setText(txt);
+        t.setTextIsSelectable(true);
+        t.setTextSize(12);
+        t.setTypeface(Typeface.MONOSPACE);
+        box.addView(t);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        setContentView(sv);
     }
 
     @Override
@@ -108,7 +161,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Sin anuncios · v2.1");
+        sub.setText("Sin anuncios · v2.2");
         sub.setTextColor(Color.parseColor("#757575"));
         sub.setPadding(0, dp(4), 0, dp(20));
         root.addView(sub);
@@ -232,6 +285,7 @@ public class MainActivity extends Activity {
     }
 
     private void refresh() {
+        if (mainButton == null || liveStatus == null) return;
         boolean rec = RecorderService.isRecording;
         boolean paused = RecorderService.isPaused;
         paint(mainButton, rec ? "#424242" : "#D32F2F", dp(32));
