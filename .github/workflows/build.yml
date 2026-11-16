@@ -35,12 +35,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Probar en emulador Android 16
+      - name: Probar en emulador Android 16 QPR1 (36.1)
         continue-on-error: true
         timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: "36.1"
           target: google_apis
           arch: x86_64
           disable-animations: true
