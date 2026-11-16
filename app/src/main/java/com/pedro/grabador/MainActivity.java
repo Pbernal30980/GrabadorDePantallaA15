@@ -1,0 +1,293 @@
+package com.pedro.grabador;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.Insets;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.media.projection.MediaProjectionManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.util.ArrayList;
+
+public class MainActivity extends Activity {
+
+    static final String PREFS = "ajustes";
+    static final String EXTRA_AUTO_START = "auto_start";
+    private static final int REQ_CAPTURE = 10;
+    private static final int REQ_PERMS = 11;
+
+    private SharedPreferences prefs;
+    private TextView status;
+    private Button mainButton, pauseButton;
+    private RadioGroup qualityGroup, audioGroup;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable ticker = new Runnable() {
+        @Override public void run() { refresh(); handler.postDelayed(this, 500); }
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        buildUi();
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent != null && intent.getBooleanExtra(EXTRA_AUTO_START, false)) {
+            intent.removeExtra(EXTRA_AUTO_START);
+            if (!RecorderService.isRecording) startFlow();
+        }
+    }
+
+    @Override protected void onResume() { super.onResume(); handler.post(ticker); }
+    @Override protected void onPause() { super.onPause(); handler.removeCallbacks(ticker); }
+
+    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+    private void buildUi() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController c = getWindow().getInsetsController();
+            if (c != null) c.setSystemBarsAppearance(
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(Color.parseColor("#FAFAFA"));
+        scroll.setFitsSystemWindows(false);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        final int pad = dp(24);
+        root.setPadding(pad, pad, pad, pad);
+        scroll.addView(root);
+        scroll.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top, bottom;
+            if (Build.VERSION.SDK_INT >= 30) {
+                Insets b = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                top = b.top; bottom = b.bottom;
+            } else {
+                top = insets.getSystemWindowInsetTop(); bottom = insets.getSystemWindowInsetBottom();
+            }
+            root.setPadding(pad, pad + top, pad, pad + bottom);
+            return insets;
+        });
+
+        TextView title = new TextView(this);
+        title.setText("Grabador de pantalla");
+        title.setTextSize(26);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(Color.parseColor("#212121"));
+        root.addView(title);
+
+        TextView sub = new TextView(this);
+        sub.setText("Sin anuncios · v2.0");
+        sub.setTextColor(Color.parseColor("#757575"));
+        sub.setPadding(0, dp(4), 0, dp(20));
+        root.addView(sub);
+
+        status = new TextView(this);
+        status.setTextSize(18);
+        status.setGravity(Gravity.CENTER);
+        status.setPadding(dp(12), dp(16), dp(12), dp(16));
+        GradientDrawable sbg = new GradientDrawable();
+        sbg.setCornerRadius(dp(14));
+        sbg.setColor(Color.parseColor("#EEEEEE"));
+        status.setBackground(sbg);
+        root.addView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        mainButton = bigButton();
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
+        blp.topMargin = dp(16);
+        root.addView(mainButton, blp);
+        mainButton.setOnClickListener(v -> {
+            if (RecorderService.isRecording) sendToService(RecorderService.ACTION_STOP);
+            else startFlow();
+        });
+
+        pauseButton = bigButton();
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
+        plp.topMargin = dp(10);
+        root.addView(pauseButton, plp);
+        pauseButton.setOnClickListener(v -> sendToService(RecorderService.isPaused ? RecorderService.ACTION_RESUME : RecorderService.ACTION_PAUSE));
+
+        root.addView(section("Sonido"));
+        audioGroup = radios(new String[]{
+                "Sin sonido",
+                "Sonido interno (videos, juegos, música)",
+                "Micrófono",
+                "Sonido interno + micrófono"}, 200, prefs.getInt("audio", 1), "audio");
+        root.addView(audioGroup);
+
+        root.addView(section("Calidad del video"));
+        qualityGroup = radios(new String[]{
+                "Alta (1080p)",
+                "Media (720p) — recomendada",
+                "Baja (480p, ocupa menos)"}, 100, prefs.getInt("calidad", 1), "calidad");
+        root.addView(qualityGroup);
+
+        TextView help = new TextView(this);
+        help.setText("• Los videos quedan en la Galería, carpeta Movies/Grabador.\n"
+                + "• Pausar y detener: desde la notificación o desde aquí.\n"
+                + "• Atajo: en el panel rápido toca el lápiz (Editar) y agrega \"Grabar pantalla\".\n"
+                + "• Cuando Android pregunte, elige \"Pantalla completa\".\n"
+                + "• Algunas apps (llamadas, WhatsApp, Netflix…) no dejan grabar su sonido o imagen; eso lo decide cada app.");
+        help.setTextColor(Color.parseColor("#616161"));
+        help.setLineSpacing(dp(4), 1f);
+        help.setPadding(0, dp(24), 0, 0);
+        root.addView(help);
+
+        setContentView(scroll);
+        refresh();
+    }
+
+    private Button bigButton() {
+        Button b = new Button(this);
+        b.setTextSize(19);
+        b.setTextColor(Color.WHITE);
+        b.setAllCaps(false);
+        b.setStateListAnimator(null);
+        return b;
+    }
+
+    private RadioGroup radios(String[] labels, int baseId, int checked, String key) {
+        RadioGroup g = new RadioGroup(this);
+        for (int i = 0; i < labels.length; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(labels[i]);
+            rb.setId(baseId + i);
+            rb.setTextSize(16);
+            rb.setPadding(dp(4), dp(6), 0, dp(6));
+            g.addView(rb);
+        }
+        g.check(baseId + checked);
+        g.setOnCheckedChangeListener((grp, id) -> prefs.edit().putInt(key, id - baseId).apply());
+        return g;
+    }
+
+    private TextView section(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(15);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setTextColor(Color.parseColor("#B71C1C"));
+        t.setPadding(0, dp(20), 0, dp(4));
+        return t;
+    }
+
+    private void paint(Button b, String color, int radius) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(radius);
+        bg.setColor(Color.parseColor(color));
+        b.setBackground(bg);
+    }
+
+    private void refresh() {
+        boolean rec = RecorderService.isRecording;
+        boolean paused = RecorderService.isPaused;
+        paint(mainButton, rec ? "#424242" : "#D32F2F", dp(32));
+        mainButton.setText(rec ? "■  Detener y guardar" : "●  Iniciar grabación");
+        pauseButton.setVisibility(rec ? android.view.View.VISIBLE : android.view.View.GONE);
+        paint(pauseButton, paused ? "#2E7D32" : "#F57C00", dp(28));
+        pauseButton.setText(paused ? "▶  Reanudar" : "❚❚  Pausar");
+        if (rec) {
+            String t = RecorderService.fmt(RecorderService.elapsedMs());
+            status.setText(paused ? "⏸ En pausa  " + t : "🔴 Grabando  " + t);
+            status.setTextColor(Color.parseColor(paused ? "#E65100" : "#B71C1C"));
+        } else {
+            status.setText(RecorderService.lastMessage != null ? RecorderService.lastMessage : "Listo para grabar");
+            status.setTextColor(Color.parseColor("#424242"));
+        }
+        for (RadioGroup g : new RadioGroup[]{qualityGroup, audioGroup})
+            for (int i = 0; i < g.getChildCount(); i++) g.getChildAt(i).setEnabled(!rec);
+    }
+
+    private void sendToService(String action) {
+        Intent i = new Intent(this, RecorderService.class).setAction(action);
+        startService(i);
+        handler.postDelayed(this::refresh, 150);
+    }
+
+    private int selectedAudio() { return prefs.getInt("audio", 1); }
+
+    private void startFlow() {
+        ArrayList<String> need = new ArrayList<>();
+        if (selectedAudio() != ScreenEncoder.AUDIO_NONE
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            need.add(Manifest.permission.RECORD_AUDIO);
+        }
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                && !prefs.getBoolean("pidio_notif", false)) {
+            need.add(Manifest.permission.POST_NOTIFICATIONS);
+            prefs.edit().putBoolean("pidio_notif", true).apply();
+        }
+        if (!need.isEmpty()) {
+            requestPermissions(need.toArray(new String[0]), REQ_PERMS);
+            return;
+        }
+        askCapture();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        if (requestCode == REQ_PERMS) askCapture();
+    }
+
+    private void askCapture() {
+        MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
+        try {
+            startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+        } catch (Exception e) {
+            Toast.makeText(this, "No se pudo abrir la captura: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode != REQ_CAPTURE) return;
+        if (resultCode != RESULT_OK || data == null) {
+            Toast.makeText(this, "Grabación cancelada", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int audio = selectedAudio();
+        if (audio != ScreenEncoder.AUDIO_NONE
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Sin permiso de audio: se grabará sin sonido", Toast.LENGTH_LONG).show();
+            audio = ScreenEncoder.AUDIO_NONE;
+        }
+        Intent i = new Intent(this, RecorderService.class);
+        i.setAction(RecorderService.ACTION_START);
+        i.putExtra("code", resultCode);
+        i.putExtra("data", data);
+        i.putExtra("audio", audio);
+        i.putExtra("calidad", prefs.getInt("calidad", 1));
+        startForegroundService(i);
+        moveTaskToBack(true);
+    }
+}
