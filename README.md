@@ -11,6 +11,7 @@ App propia para grabar la pantalla del Samsung Galaxy A15 (sirve para cualquier 
 - Sonido: sin sonido, sonido interno, micrófono, o interno + micrófono.
 - Pausar / reanudar / detener desde la notificación o desde la app.
 - Botón en el panel rápido ("Grabar pantalla").
+- Aparece en la Now Bar / notificaciones en vivo de One UI 8, 8.5 y 9 (Live Updates de Android 16+), con chip de tiempo en la barra de estado.
 - Los videos quedan en la Galería, carpeta `Movies/Grabador`.
 
 ## Cómo se compila

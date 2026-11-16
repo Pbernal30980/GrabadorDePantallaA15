@@ -39,6 +39,8 @@ public class MainActivity extends Activity {
     private TextView status;
     private Button mainButton, pauseButton;
     private RadioGroup qualityGroup, audioGroup;
+    private TextView liveStatus;
+    private Button liveButton;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable ticker = new Runnable() {
         @Override public void run() { refresh(); handler.postDelayed(this, 500); }
@@ -106,7 +108,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Sin anuncios · v2.0");
+        sub.setText("Sin anuncios · v2.1");
         sub.setTextColor(Color.parseColor("#757575"));
         sub.setPadding(0, dp(4), 0, dp(20));
         root.addView(sub);
@@ -150,6 +152,28 @@ public class MainActivity extends Activity {
                 "Media (720p) — recomendada",
                 "Baja (480p, ocupa menos)"}, 100, prefs.getInt("calidad", 1), "calidad");
         root.addView(qualityGroup);
+
+        root.addView(section("Now Bar / Notificaciones en vivo"));
+        liveStatus = new TextView(this);
+        liveStatus.setTextSize(15);
+        liveStatus.setTextColor(Color.parseColor("#424242"));
+        liveStatus.setLineSpacing(dp(2), 1f);
+        root.addView(liveStatus);
+        liveButton = new Button(this);
+        liveButton.setAllCaps(false);
+        liveButton.setTextSize(15);
+        liveButton.setTextColor(Color.parseColor("#B71C1C"));
+        liveButton.setText("Abrir ajustes de notificaciones en vivo");
+        GradientDrawable lbg = new GradientDrawable();
+        lbg.setCornerRadius(dp(22));
+        lbg.setStroke(dp(2), Color.parseColor("#D32F2F"));
+        lbg.setColor(Color.TRANSPARENT);
+        liveButton.setBackground(lbg);
+        liveButton.setStateListAnimator(null);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        llp.topMargin = dp(8);
+        root.addView(liveButton, llp);
+        liveButton.setOnClickListener(v -> LiveUpdate.openSettings(this));
 
         TextView help = new TextView(this);
         help.setText("• Los videos quedan en la Galería, carpeta Movies/Grabador.\n"
@@ -223,8 +247,31 @@ public class MainActivity extends Activity {
             status.setText(RecorderService.lastMessage != null ? RecorderService.lastMessage : "Listo para grabar");
             status.setTextColor(Color.parseColor("#424242"));
         }
+        refreshLive(rec);
         for (RadioGroup g : new RadioGroup[]{qualityGroup, audioGroup})
             for (int i = 0; i < g.getChildCount(); i++) g.getChildAt(i).setEnabled(!rec);
+    }
+
+    private void refreshLive(boolean rec) {
+        if (!LiveUpdate.supported()) {
+            liveStatus.setText("Tu versión de Android no tiene Now Bar para otras apps (necesita One UI 8 o superior). La grabación funciona igual.");
+            liveButton.setVisibility(android.view.View.GONE);
+            return;
+        }
+        Boolean allowed = LiveUpdate.canPost(this);
+        Boolean active = RecorderService.liveActive;
+        StringBuilder t = new StringBuilder();
+        if (Boolean.FALSE.equals(allowed)) {
+            t.append("⚠️ Las notificaciones en vivo están desactivadas para esta app. Actívalas para ver la grabación en la Now Bar y en la barra de estado.");
+        } else if (rec && Boolean.TRUE.equals(active)) {
+            t.append("✅ La grabación se está mostrando en la Now Bar y como chip en la barra de estado.");
+        } else if (rec && Boolean.FALSE.equals(active)) {
+            t.append("La grabación no quedó como notificación en vivo. Revisa en Ajustes › Notificaciones › Notificaciones en vivo que \"Grabador\" esté activado.");
+        } else {
+            t.append("Cuando grabes, el tiempo y los botones Pausar/Detener aparecen en la Now Bar (pantalla de bloqueo) y en la barra de estado.");
+        }
+        liveStatus.setText(t);
+        liveButton.setVisibility(android.view.View.VISIBLE);
     }
 
     private void sendToService(String action) {

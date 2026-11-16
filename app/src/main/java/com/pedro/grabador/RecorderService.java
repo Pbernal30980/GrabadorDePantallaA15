@@ -51,6 +51,8 @@ public class RecorderService extends Service {
     static volatile long pausedTotal = 0;
     static volatile long pausedSince = 0;
     static volatile String lastMessage = null;
+    /** null = no se sabe todavía; true = la grabación aparece como Live Update (Now Bar). */
+    static volatile Boolean liveActive = null;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private MediaProjection projection;
@@ -231,6 +233,7 @@ public class RecorderService extends Service {
         releaseProjection();
         isRecording = false;
         isPaused = false;
+        liveActive = null;
         if (outPfd != null) { try { outPfd.close(); } catch (Exception ignored) {} outPfd = null; }
         ContentResolver cr = getContentResolver();
         if (ok && outUri != null) {
@@ -268,26 +271,37 @@ public class RecorderService extends Service {
                 .setColor(0xFFD32F2F)
                 .setContentIntent(openPi)
                 .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        String elapsed = fmt(elapsedMs());
         if (isPaused) {
-            b.setContentTitle("⏸ Grabación en pausa")
-             .setContentText("Llevas " + fmt(elapsedMs()))
+            b.setContentTitle("Grabación en pausa")
+             .setContentText("Llevas " + elapsed + " · toca Reanudar para seguir")
              .setUsesChronometer(false)
-             .addAction(new Notification.Action.Builder(icon, "▶ Reanudar", servicePi(ACTION_RESUME, 3)).build());
+             .setShowWhen(false)
+             .addAction(new Notification.Action.Builder(icon, "Reanudar", servicePi(ACTION_RESUME, 3)).build());
+            LiveUpdate.apply(b, this, "Pausa", "Grabación en pausa", elapsed);
         } else {
-            b.setContentTitle("🔴 Grabando pantalla")
+            b.setContentTitle("Grabando pantalla")
              .setContentText("Toca Detener para guardar el video")
              .setWhen(System.currentTimeMillis() - elapsedMs())
              .setShowWhen(true)
              .setUsesChronometer(true)
-             .addAction(new Notification.Action.Builder(icon, "⏸ Pausar", servicePi(ACTION_PAUSE, 4)).build());
+             .addAction(new Notification.Action.Builder(icon, "Pausar", servicePi(ACTION_PAUSE, 4)).build());
+            LiveUpdate.apply(b, this, null, "Grabando pantalla", "Toca para detener");
         }
-        b.addAction(new Notification.Action.Builder(icon, "⏹ Detener", servicePi(ACTION_STOP, 1)).build());
+        b.addAction(new Notification.Action.Builder(icon, "Detener", servicePi(ACTION_STOP, 1)).build());
         return b.build();
     }
 
     private void updateNotification() {
         if (!isRecording) return;
         getSystemService(NotificationManager.class).notify(NOTIF_REC, buildRecordingNotification());
+        checkPromoted();
+    }
+
+    private void checkPromoted() {
+        main.postDelayed(() -> {
+            if (isRecording) liveActive = LiveUpdate.supported() ? LiveUpdate.isPromoted(this, NOTIF_REC) : null;
+        }, 600);
     }
 
     private void notifyDone(Uri uri) {
